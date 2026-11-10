@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Precinct SDI fault: checklist and Blackmagic survey</title>
+<style>
+:root{--bg:#fafaf7;--card:#fff;--ink:#1d1d1b;--mute:#6b6b66;--line:#e4e2dc;--ok:#1f7a4d;--ver:#b06a00;--todo:#6b6b66}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+header{padding:18px 20px 12px;border-bottom:1px solid var(--line);background:var(--card);position:sticky;top:0;z-index:2}
+.wrap{max-width:920px;margin:0 auto}
+h1{font-size:20px;margin:0 0 2px}
+.sub{color:var(--mute);font-size:13px}
+.bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden;margin:12px 0 6px}
+.bar>div{height:100%;width:0;background:var(--ok);transition:width .2s}
+.stats{font-size:13px;color:var(--mute)}
+.controls{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+input[type=search]{flex:1;min-width:180px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit}
+button.f{padding:7px 11px;border:1px solid var(--line);background:var(--card);border-radius:6px;cursor:pointer;font:inherit;font-size:13px;color:var(--ink)}
+button.f.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+main{max-width:920px;margin:0 auto;padding:8px 20px 60px}
+.note{background:#fff7e6;border:1px solid #f0d9a8;padding:10px 12px;border-radius:8px;font-size:13px;margin:12px 0}
+.hidden{display:none!important}
+section{margin-bottom:22px}
+section h2{font-size:16px;margin:20px 0 8px;display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+section h2 span{font-size:12px;color:var(--mute);font-weight:normal;white-space:nowrap}
+.item{display:flex;gap:12px;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:6px}
+.item input{margin-top:4px;width:18px;height:18px;flex:none}
+.item.done .name{text-decoration:line-through;color:var(--mute)}
+.name{font-weight:600}
+.detail{color:var(--mute);font-size:13px;margin-top:2px}
+.tag{display:inline-block;font-size:11px;font-weight:600;padding:1px 7px;border-radius:10px;margin-left:8px;vertical-align:1px;border:1px solid;text-decoration:none}
+.tag.ok{color:var(--ok);border-color:var(--ok)}
+.tag.verify{color:var(--ver);border-color:var(--ver)}
+.tag.todo{color:var(--todo);border-color:var(--todo)}
+.stamp{font-size:11px;color:var(--mute);margin-top:4px}
+footer{font-size:12px;color:var(--mute);margin-top:30px;border-top:1px solid var(--line);padding-top:12px}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>Precinct SDI fault: checklist and Blackmagic survey</h1>
+    <div class="sub">Tick items off as you go. Ticks are shared with anyone who has Contributor access to this page.</div>
+    <div class="bar"><div id="bar"></div></div>
+    <div class="stats" id="stats">Loading...</div>
+    <div class="controls">
+      <input type="search" id="q" placeholder="Search products or checks" aria-label="Search">
+      <button class="f on" data-mode="all">All</button>
+      <button class="f" data-mode="open">Not ticked</button>
+      <button class="f" data-mode="done">Ticked</button>
+      <button class="f" data-mode="check">Needs checking</button>
+    </div>
+  </div>
+</header>
+<main>
+  <div class="wrap">
+    <div id="note" class="note hidden"></div>
+    <div id="list"></div>
+    <footer>
+      Status tags: <b>spec seen</b> means the search results gave a clear rate list. <b>check</b> means the sources conflict, the detail is unconfirmed, or the item was covered only in an earlier reply. <b>not checked</b> means no search has been done yet. Confirm anything you rely on against the current Blackmagic datasheet or manual before buying or configuring.
+    </footer>
+  </div>
+</main>
+<script>
+const GROUPS = {
+  diag: "1. Fault checklist (work through in order)",
+  ask:  "2. Needed from you",
+  conv: "3. Converters and standards converters",
+  rout: "4. Routers",
+  swit: "5. Switchers (ATEM)",
+  deck: "6. Capture and playback cards (DeckLink)",
+  ultr: "7. Thunderbolt and USB I/O (UltraStudio)",
+  mon:  "8. Recorders, monitors and scopes",
+  cam:  "9. Cameras",
+  oth:  "10. Other and unverified"
+};
+const TAGS = {ok:"spec seen", verify:"check", todo:"not checked"};
+
+const ITEMS = [
+  {id:"d01", g:"diag", s:"todo", n:"Identify the PC-end HDMI-to-SDI box and check its SDI output mode", d:"Must be 1080p50/60 at 3G level A or B, not auto or 1.5G. A 1.5G-only setting drops the chain to 25 or 30 Hz."},
+  {id:"d02", g:"diag", s:"todo", n:"Check the 20 m direct run", d:"BNC connectors crimped properly, 75 ohm cable, no T-pieces, no unterminated loop outputs."},
+  {id:"d03", g:"diag", s:"todo", n:"Put a Teranex AV or Teranex Express at the projector end", d:"See whether 50/60 Hz gets through. If it does, the problem is a level or rate mismatch upstream."},
+  {id:"d04", g:"diag", s:"todo", n:"Test 1080p30 and 1080p60 on the same run", d:"If only 50/60 fails, suspect the 3G path or converter mode, not the cable length."},
+  {id:"d05", g:"diag", s:"verify", n:"Confirm the projector's SDI input accepts 1080p60", d:"Epson lists 67.5 kHz as its SDI horizontal limit. 1080p60 is 67.5 kHz, so there is almost no headroom."},
+  {id:"d06", g:"diag", s:"todo", n:"Compare 59.94 Hz and 60 Hz on each box", d:"A mismatch between boxes can cause intermittent sync or dropouts."},
+  {id:"d07", g:"diag", s:"todo", n:"Swap one box at a time", d:"Start from the PC and move toward the projector. Note the first point where the picture is lost."},
+  {id:"d08", g:"diag", s:"todo", n:"Check the PC output settings", d:"Set 1080p60 explicitly. Look for HDCP or EDID negotiation problems."},
+  {id:"d09", g:"diag", s:"todo", n:"Check power and earthing", d:"Confirm the 12V supplies on the converters. Look for ground loops and interference from dimmers or switch-mode supplies near the SDI runs."},
+  {id:"d10", g:"diag", s:"todo", n:"Check any router in the path", d:"Confirm the output is reclocked and the input signal is clean. Routers do not re-sync inputs."},
+  {id:"d11", g:"diag", s:"todo", n:"Check for intermittent connectors", d:"Loose BNCs at both ends, at patch panels, and at any wall plates."},
+
+  {id:"a01", g:"ask", s:"todo", n:"Send the PC-end HDMI-to-SDI box model", d:"A photo of the label is enough."},
+  {id:"a02", g:"ask", s:"todo", n:"Send a rear-panel photo of the Sanyo PLC-HF15000L", d:"Needed to confirm which inputs it accepts."},
+  {id:"a03", g:"ask", s:"todo", n:"Send the decimator model numbers", d:"Decimators are not Blackmagic, so they have not been checked."},
+  {id:"a04", g:"ask", s:"todo", n:"Confirm how the Epson EB-PU2216B is fed", d:"Native BNC 3G-SDI, or through a converter?"},
+
+  {id:"c01", g:"conv", s:"ok", n:"Teranex AV", d:"One BNC input auto-switches SD, HD, 3G level A and B, 6G and 12G. Quad SDI out, HDMI in and out. Up, down, cross and standards conversion. Best tool for isolating the frame-rate fault."},
+  {id:"c02", g:"conv", s:"ok", n:"Teranex Express", d:"Real-time standards and frame-rate conversion. Accepts 3G level A and B, 6G and 12G."},
+  {id:"c03", g:"conv", s:"verify", n:"Teranex Mini HDMI to SDI 12G", d:"Two 12G SDI outputs, auto-matches the HDMI input, reclocks. Sources conflict on 1080p50/60 support."},
+  {id:"c04", g:"conv", s:"verify", n:"Teranex Mini SDI to HDMI 12G", d:"12G SDI input and loop, auto SD/HD/2K/4K, reclocks. Confirm 1080p50/60 on the HDMI output."},
+  {id:"c05", g:"conv", s:"ok", n:"Teranex Mini Analog to SDI 12G", d:"Two independent 12G outputs. SD, HD, 6G and 12G up to 2160p60."},
+  {id:"c06", g:"conv", s:"ok", n:"Teranex Mini SDI to Analog 12G", d:"The reverse of the analog-to-SDI unit."},
+  {id:"c07", g:"conv", s:"ok", n:"Teranex Mini Smart Panel", d:"Front-panel LCD accessory for Teranex Mini converters and Web Presenter. Not a signal device."},
+  {id:"c08", g:"conv", s:"verify", n:"Teranex Mini SDI Distribution 12G", d:"HD list in the search result was truncated. Re-check the HD rates."},
+  {id:"c09", g:"conv", s:"ok", n:"Studio Converter", d:"12G SDI in and out, carried over 10G Ethernet to a Studio Camera. Lists 1080p50, 1080p59.94 and 1080p60."},
+  {id:"c10", g:"conv", s:"ok", n:"ATEM Studio Converter (optical camera converter)", d:"HD formats 720p50, 720p59.94 and 720p60 only. No 1080p."},
+  {id:"c11", g:"conv", s:"ok", n:"Micro Converter HDMI to SDI 12G", d:"Two 12G SDI outputs with re-clocking. Lists 1080p50, 1080p59.94 and 1080p60, up to 4K60."},
+  {id:"c12", g:"conv", s:"ok", n:"Micro Converter SDI to HDMI 12G", d:"Auto-matches the SDI input to the HDMI output. One SDI input and one loop. Up to 4K60."},
+  {id:"c13", g:"conv", s:"ok", n:"Micro Converter BiDirectional SDI/HDMI 12G", d:"Converts both directions at once. SDI rates 270M, 1.5G, 3G, 6G and 12G. Reclocks."},
+  {id:"c14", g:"conv", s:"verify", n:"Micro Converter HDMI to SDI (original, 3G era)", d:"Detects SD, HD and 3G-SDI, so the earlier 'SD and HD only' note was wrong. Check whether its output is level A or B. Possible PC-end box."},
+  {id:"c15", g:"conv", s:"ok", n:"Mini Converter Optical Fiber 12G", d:"Bidirectional SDI to SFP fibre. SD, HD and UHD up to 60 fps, auto-detects and reclocks. SFP not included."},
+  {id:"c16", g:"conv", s:"ok", n:"Mini Converter UpDownCross HD", d:"SD and HD conversion in both directions, including frame-rate changes. 3G class."},
+  {id:"c17", g:"conv", s:"ok", n:"Mini Converter Audio to SDI", d:"Embeds audio in SD and HD up to 1080p60. Loops SDI through. ALT SDI input for automatic switchover."},
+  {id:"c18", g:"conv", s:"ok", n:"Mini Converter SDI to Audio", d:"De-embeds audio from SD and HD up to 1080p60. The 4K version takes 6G."},
+  {id:"c19", g:"conv", s:"verify", n:"Mini Converter Sync Generator", d:"The listing shows 1080i and 720p but not 1080p50/60. Check the manual before using it as a 60 Hz reference."},
+  {id:"c20", g:"conv", s:"todo", n:"Mini Converter SDI to HDMI (your existing box at the projector end)", d:"Ports: HDMI, SDI in, SDI out, ALT SDI in, SDI lock LED. Confirm 1080p50/60 output and the SDI rates it locks to."},
+
+  {id:"r01", g:"rout", s:"ok", n:"Videohub 12G 40x40", d:"SDI rates DVB-ASI, 270M, 1.5G, 3G, 6G and 12G. Reclocks every SDI output. No input re-sync."},
+  {id:"r02", g:"rout", s:"todo", n:"Videohub 12G 10x10 and 20x20", d:"Not yet verified in detail."},
+  {id:"r03", g:"rout", s:"ok", n:"Smart Videohub 12G 40x40", d:"Same SDI rate list as the Videohub 40x40."},
+  {id:"r04", g:"rout", s:"todo", n:"Smart Videohub 12G 80x80", d:"Not yet verified."},
+  {id:"r05", g:"rout", s:"todo", n:"Videohub CleanSwitch", d:"Not yet checked."},
+
+  {id:"s01", g:"swit", s:"ok", n:"ATEM Constellation 8K", d:"40 x 12G-SDI inputs. Auto-detects 3G level A and B, 6G and 12G. Up and cross conversion on inputs."},
+  {id:"s02", g:"swit", s:"ok", n:"ATEM Television Studio HD8 ISO", d:"Eight 3G-SDI inputs. SDI rates 1.5G and 3G. Up to 1080p60."},
+  {id:"s03", g:"swit", s:"verify", n:"ATEM Television Studio 4K8", d:"Covered in an earlier reply. Not re-checked here."},
+  {id:"s04", g:"swit", s:"ok", n:"ATEM Mini Pro ISO", d:"Four HDMI inputs up to 1080p60, with frame-rate and format converters and input re-sync."},
+  {id:"s05", g:"swit", s:"ok", n:"ATEM Mini (original)", d:"Frame-rate and format converters on all four HDMI inputs."},
+  {id:"s06", g:"swit", s:"verify", n:"ATEM Mini Extreme", d:"Eight HDMI inputs, two HDMI outputs, multiview. Non-ISO SDI status not confirmed."},
+  {id:"s07", g:"swit", s:"verify", n:"ATEM Mini Extreme ISO G2", d:"Spec sheet lists SDI rates as a dash. Treat as HDMI-only until confirmed."},
+
+  {id:"k01", g:"deck", s:"ok", n:"DeckLink 8K Pro", d:"Four bidirectional multi-rate 12G-SDI connections, up to 8K at 60 fps."},
+  {id:"k02", g:"deck", s:"verify", n:"DeckLink 8K Pro G2", d:"A secondary source says up to 120 fps in HD and 4K. Confirm on the datasheet."},
+  {id:"k03", g:"deck", s:"ok", n:"DeckLink 4K Extreme 12G", d:"Two full-frame DCI 4K inputs and outputs over 12G-SDI, up to 2160p60."},
+  {id:"k04", g:"deck", s:"ok", n:"DeckLink Quad 2", d:"Eight bidirectional SD, HD and 3G channels, each set as input or output. Up to 1080p60, level A and B."},
+  {id:"k05", g:"deck", s:"ok", n:"DeckLink Duo 2", d:"Four bidirectional 3G-SDI channels, up to 1080p60. No native 4K."},
+  {id:"k06", g:"deck", s:"verify", n:"DeckLink Duo 2 Mini", d:"Four mini 3G-SDI channels. Top rate not confirmed."},
+  {id:"k07", g:"deck", s:"ok", n:"DeckLink Mini Monitor 4K", d:"6G-SDI and HDMI 2.0a outputs up to 2160p30."},
+  {id:"k08", g:"deck", s:"ok", n:"DeckLink Mini Recorder 4K", d:"6G-SDI and HDMI 2.0a inputs up to 2160p30."},
+
+  {id:"u01", g:"ultr", s:"ok", n:"UltraStudio 4K Extreme 3", d:"Two 12G and two 6G SDI, in and out. SDI rates 270M to 12G. Up to 60 fps."},
+  {id:"u02", g:"ultr", s:"ok", n:"UltraStudio 4K Mini", d:"One SDI input, two program outputs and a loop. Rates 270M to 12G, up to 2160p60."},
+  {id:"u03", g:"ultr", s:"ok", n:"UltraStudio HD Mini", d:"SD, HD and 3G-SDI. Dual SDI and HDMI outputs. Up to 1080p60."},
+  {id:"u04", g:"ultr", s:"ok", n:"UltraStudio Monitor 3G", d:"SDI rates 270M, 1.5G and 3G. Up to 1080p60."},
+  {id:"u05", g:"ultr", s:"ok", n:"UltraStudio Recorder 3G", d:"SDI rates 270M, 1.5G and 3G. Up to 1080p60."},
+  {id:"u06", g:"ultr", s:"ok", n:"UltraStudio Mini Recorder, Monitor and Replay 12G", d:"12G-SDI and HDMI, up to 2160p60, Thunderbolt 4."},
+  {id:"u07", g:"ultr", s:"verify", n:"Older EDIUS sheet on UltraStudio SDI", d:"A 2014 sheet appeared to say UltraStudio SDI lacks 1080p50/60. Not trusted. Check the current spec."},
+
+  {id:"m01", g:"mon", s:"todo", n:"HyperDeck family", d:"Covered in an earlier reply. Not re-checked here."},
+  {id:"m02", g:"mon", s:"todo", n:"Video Assist (3G and 12G HDR)", d:"Not re-checked here."},
+  {id:"m03", g:"mon", s:"todo", n:"Web Presenter (HD and 4K)", d:"Covered in an earlier reply. Not re-checked here."},
+  {id:"m04", g:"mon", s:"todo", n:"Duplicator 4K", d:"Covered in an earlier reply. Not re-checked here."},
+  {id:"m05", g:"mon", s:"todo", n:"Duplicator 12G", d:"Not yet searched."},
+  {id:"m06", g:"mon", s:"ok", n:"SmartView 4K (original)", d:"12G-SDI monitor, up to 2160p60. Rates 3G, 6G and 12G."},
+  {id:"m07", g:"mon", s:"ok", n:"SmartView 4K G3", d:"12G-SDI and SMPTE 2110 IP inputs."},
+  {id:"m08", g:"mon", s:"ok", n:"SmartScope Duo 4K", d:"Reclocked loop-through. SD, HD and 6G switchable. 1080p60 and 2K/UHD formats. Scopes."},
+  {id:"m09", g:"mon", s:"ok", n:"SmartView Duo", d:"SD, HD and 3G-SDI. Up to 1080p60."},
+  {id:"m10", g:"mon", s:"todo", n:"Camera Fiber Converter and Studio Fiber Converter", d:"Not yet searched."},
+  {id:"m11", g:"mon", s:"todo", n:"Audio Monitor 12G G3", d:"Not yet searched."},
+  {id:"m12", g:"mon", s:"todo", n:"PYXIS", d:"Not yet searched."},
+
+  {id:"p01", g:"cam", s:"ok", n:"Pocket Cinema Camera 4K, 6K Pro and 6K G2", d:"HDMI only, up to 1080p60. No SDI."},
+  {id:"p02", g:"cam", s:"ok", n:"URSA Mini Pro 12K", d:"One 12G-SDI and one 3G-SDI monitoring output. SDI rates 1.5G to 12G."},
+  {id:"p03", g:"cam", s:"ok", n:"Micro Studio Camera 4K G2", d:"12G-SDI micro BNC in and out, up to 2160p60. HDMI output is always HD, up to 1080p60."},
+  {id:"p04", g:"cam", s:"ok", n:"Studio Camera 6K Pro", d:"12G-SDI output and program return input. SDI rates 1.5G, 3G, 6G and 12G."},
+  {id:"p05", g:"cam", s:"verify", n:"Studio Camera 4K Pro G2, Plus G2 and URSA Broadcast G2", d:"Covered in an earlier reply. URSA Broadcast G2 program output was given as up to 1080p60. Confirm."},
+  {id:"p06", g:"cam", s:"todo", n:"Cinema Camera 6K and URSA Mini 4.6K G2", d:"Older cameras. Not yet searched."},
+
+  {id:"o01", g:"oth", s:"ok", n:"MultiDock 10G", d:"Four-slot SSD dock on one 10 Gb/s USB-C connection. Carries no video."},
+  {id:"o02", g:"oth", s:"todo", n:"Blackmagic Cloud Store and Cloud Pod", d:"Not yet searched."},
+  {id:"o03", g:"oth", s:"verify", n:"Sync Generator HD list", d:"Re-verify the HD rates list."},
+  {id:"o04", g:"oth", s:"todo", n:"OpenGear converters frame-rate list", d:"Not a Blackmagic product. Not yet checked."},
+  {id:"o05", g:"oth", s:"todo", n:"Legacy DeckLink, Intensity, UltraStudio and Micro 3G models", d:"Not yet searched."}
+];
+
+let db = null, shared = false, readOnly = false, loaded = false;
+let state = {};
+let mode = "all";
+
+const $ = id => document.getElementById(id);
+
+function isDone(id){ return !!(state[id] && state[id].done); }
+
+function matches(i, q){
+  if (mode === "open" && isDone(i.id)) return false;
+  if (mode === "done" && !isDone(i.id)) return false;
+  if (mode === "check" && i.s === "ok") return false;
+  if (!q) return true;
+  return (i.n + " " + i.d).toLowerCase().includes(q);
+}
+
+function row(i){
+  const d = isDone(i.id);
+  const el = document.createElement("div");
+  el.className = "item" + (d ? " done" : "");
+  const cb = document.createElement("input");
+  cb.type = "checkbox";
+  cb.checked = d;
+  cb.disabled = readOnly;
+  cb.setAttribute("aria-label", i.n);
+  cb.addEventListener("change", () => toggle(i.id, cb.checked));
+  const body = document.createElement("div");
+  const nm = document.createElement("div");
+  nm.className = "name";
+  nm.textContent = i.n;
+  const t = document.createElement("span");
+  t.className = "tag " + i.s;
+  t.textContent = TAGS[i.s];
+  nm.appendChild(t);
+  const de = document.createElement("div");
+  de.className = "detail";
+  de.textContent = i.d;
+  body.append(nm, de);
+  if (d && state[i.id].at) {
+    const st = document.createElement("div");
+    st.className = "stamp";
+    st.textContent = "Ticked " + new Date(state[i.id].at).toLocaleString("en-AU", {day:"numeric", month:"short", hour:"2-digit", minute:"2-digit"});
+    body.appendChild(st);
+  }
+  el.append(cb, body);
+  return el;
+}
+
+function render(){
+  const q = ($("q").value || "").trim().toLowerCase();
+  const list = $("list");
+  list.textContent = "";
+  const doneCount = ITEMS.filter(i => isDone(i.id)).length;
+  $("bar").style.width = (ITEMS.length ? doneCount / ITEMS.length * 100 : 0) + "%";
+  $("stats").textContent = doneCount + " of " + ITEMS.length + " ticked" + (loaded ? "" : " (loading shared ticks...)");
+  Object.keys(GROUPS).forEach(g => {
+    const items = ITEMS.filter(i => i.g === g && matches(i, q));
+    if (!items.length) return;
+    const sec = document.createElement("section");
+    const h = document.createElement("h2");
+    h.textContent = GROUPS[g];
+    const sp = document.createElement("span");
+    sp.textContent = items.filter(i => isDone(i.id)).length + " of " + items.length + " ticked";
+    h.appendChild(sp);
+    sec.appendChild(h);
+    items.forEach(i => sec.appendChild(row(i)));
+    list.appendChild(sec);
+  });
+}
+
+function showNote(msg){
+  const n = $("note");
+  n.textContent = msg;
+  n.classList.remove("hidden");
+}
+
+async function toggle(id, checked){
+  const prev = state[id];
+  const val = {done: checked, at: new Date().toISOString()};
+  state[id] = val;
+  render();
+  if (!shared) {
+    try { localStorage.setItem("sdi-ticks", JSON.stringify(state)); } catch (e) {}
+    return;
+  }
+  try {
+    await db.doc("items/" + id).set(val);
+  } catch (e) {
+    if (prev) state[id] = prev; else delete state[id];
+    if (e && e.code === "invalid_argument") {
+      readOnly = true;
+      showNote("You can view this checklist but not tick items. Ask the owner for Contributor access.");
+    } else {
+      showNote("Could not save that tick (" + ((e && e.code) || "error") + "). Try again.");
+    }
+    render();
+  }
+}
+
+async function init(){
+  let ns = null;
+  try {
+    ns = (window.claude && window.claude.use) ? await window.claude.use("db") : null;
+  } catch (e) { ns = null; }
+
+  if (!ns) {
+    shared = false;
+    loaded = true;
+    showNote("Shared ticking is not available in this view. Ticks are saved only in this browser.");
+    try { state = JSON.parse(localStorage.getItem("sdi-ticks") || "{}"); } catch (e) { state = {}; }
+    render();
+    return;
+  }
+
+  db = ns;
+  shared = true;
+  const slow = setTimeout(() => {
+    if (!loaded) showNote("Still waiting for shared ticks. They may be out of date until this loads.");
+  }, 10000);
+  db.collection("items").onSnapshot(snap => {
+    const s = {};
+    snap.docs.forEach(d => { if (d.exists) s[d.id] = d.data(); });
+    state = s;
+    loaded = true;
+    clearTimeout(slow);
+    $("note").classList.add("hidden");
+    render();
+  }, err => {
+    clearTimeout(slow);
+    loaded = true;
+    showNote("Could not load shared ticks (" + ((err && err.code) || "error") + "). Try again later.");
+    render();
+  });
+}
+
+document.querySelectorAll("button.f").forEach(b => {
+  b.addEventListener("click", () => {
+    mode = b.dataset.mode;
+    document.querySelectorAll("button.f").forEach(x => x.classList.toggle("on", x === b));
+    render();
+  });
+});
+$("q").addEventListener("input", render);
+
+render();
+init();
+</script>
+</body>
+</html>
